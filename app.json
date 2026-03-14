@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "train-arrival-notifier",
+    "slug": "train-arrival-notifier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSUserNotificationUsageDescription": "降りる駅への接近通知をお知らせするために通知を使用します。",
+        "NSLocationWhenInUseUsageDescription": "最寄駅判定と降車駅通知のために位置情報を使用します。",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "降車駅に近づいたことを通知するため、バックグラウンドでも位置情報を使用します."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "train-arrival-notifier",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "最寄駅判定と降車駅通知のために位置情報を使用します。",
+          "locationAlwaysAndWhenInUsePermission": "降車駅への接近通知のため、バックグラウンドでも位置情報を使用します。",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#007AFF",
+          "defaultChannel": "station_approach"
+        }
+      ],
+      "expo-task-manager"
+    ]
+  }
+}
