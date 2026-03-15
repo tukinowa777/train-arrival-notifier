@@ -171,6 +171,27 @@ export default function SettingsScreen() {
     return androidBridgeState.foregroundLocationGranted ? '許可済み' : '未許可';
   }, [androidBridgeState.foregroundLocationGranted]);
 
+  const androidLastNotificationLabel = useMemo(() => {
+    if (!androidBridgeState.lastNotificationTestAt) {
+      return '-';
+    }
+
+    return new Date(androidBridgeState.lastNotificationTestAt).toLocaleString('ja-JP');
+  }, [androidBridgeState.lastNotificationTestAt]);
+
+  const androidLastDropoffLabel = useMemo(() => {
+    if (!androidBridgeState.lastDropoffNotificationAt) {
+      return '-';
+    }
+
+    const notifiedAt = new Date(androidBridgeState.lastDropoffNotificationAt).toLocaleString('ja-JP');
+    const stationName = androidBridgeState.lastDropoffNotificationStationName;
+    return stationName ? `${stationName}駅 / ${notifiedAt}` : notifiedAt;
+  }, [
+    androidBridgeState.lastDropoffNotificationAt,
+    androidBridgeState.lastDropoffNotificationStationName,
+  ]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.sectionCard}>
@@ -244,6 +265,26 @@ export default function SettingsScreen() {
             <Text style={styles.statusValue}>
               {androidBridgeState.lastEventType ?? '未受信'}
             </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android HOME駅</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.homeStationName ? `${androidBridgeState.homeStationName}駅` : '-'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android 到着駅</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.dropoffTargetName ? `${androidBridgeState.dropoffTargetName}駅` : '-'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>最終通知テスト</Text>
+            <Text style={styles.statusValue}>{androidLastNotificationLabel}</Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>最終到着駅通知</Text>
+            <Text style={styles.statusValue}>{androidLastDropoffLabel}</Text>
           </View>
         </View>
 

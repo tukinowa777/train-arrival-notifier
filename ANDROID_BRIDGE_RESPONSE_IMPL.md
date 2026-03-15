@@ -15,6 +15,8 @@
 - `buildPermissionStatePayload()`
 - `permissions.get` 受信時の返却処理
 - `notification.test` 成功後の `notification.test.sent` イベント返却
+- `homeStation.state` / `dropoffTarget.state` の初期同期
+- `dropoffTarget.notified` の返却
 
 ## Kotlin 実装例
 以下を `MainActivity.kt` に追加する。
@@ -127,6 +129,60 @@ private fun escapeForJavascript(raw: String): String {
 3. Android -> Web で `permissions.state` が返る
 4. 画面上の `Android通知権限` / `Android位置権限` / `最終Androidイベント` が更新される
 
+## 次に返すイベント
+
+### `homeStation.state`
+Android 側で保存済みの `homeStation` がある場合、WebView 読み込み完了後に返す。
+
+```kotlin
+private fun dispatchSavedStationsToWeb() {
+    val rawHomeStation = appPreferences.getString(homeStationKey, null)
+    val rawDropoffTarget = appPreferences.getString(dropoffTargetKey, null)
+
+    if (rawHomeStation != null) {
+        dispatchEventToWeb(
+            type = "homeStation.state",
+            requestId = "sync-home-station",
+            payload = JSONObject(rawHomeStation)
+        )
+    }
+
+    if (rawDropoffTarget != null) {
+        dispatchEventToWeb(
+            type = "dropoffTarget.state",
+            requestId = "sync-dropoff-target",
+            payload = JSONObject(rawDropoffTarget)
+        )
+    }
+}
+```
+
+呼び出し位置は `onPageFinished(...)` の後が扱いやすい。
+
+```kotlin
+override fun onPageFinished(view: WebView?, url: String?) {
+    Log.d("TrainAppWebView", "onPageFinished: $url")
+    dispatchSavedStationsToWeb()
+}
+```
+
+### `dropoffTarget.notified`
+到着駅通知を出した直後に返す。Web 側は `HOME駅` 画面で通知履歴として表示できる。
+
+```kotlin
+dispatchEventToWeb(
+    type = "dropoffTarget.notified",
+    requestId = "event-dropoff-notified",
+    payload = JSONObject().apply {
+        put("stationId", stationId)
+        put("stationName", stationName)
+        put("distanceMeters", distanceMeters)
+        put("estimatedArrivalMinutes", estimatedArrivalMinutes)
+        put("notifiedAt", java.time.Instant.now().toString())
+    }
+)
+```
+
 ## Logcat で見るもの
 - `TrainAppBridge`
 - `TrainAppWebView`
@@ -140,9 +196,9 @@ Log.d("TrainAppBridge", "dispatch to web: $type")
 ## この段階でできること
 - Android の権限状態を WebView UI に返せる
 - テスト通知送信結果を WebView UI に返せる
-- 次段階の `dropoffTarget.notified` 返却と同じ経路を確立できる
+- Android 側が保持している `HOME駅` / `到着駅` を WebView UI に返せる
+- 到着駅通知の発火イベントを WebView UI に返せる
 
 ## 次の実装
-- `dropoffTarget.notified` を返す
-- `homeStation.state` / `dropoffTarget.state` の初期同期を返す
 - 位置監視サービスの状態も `location.state` として返す
+- 前面表示中の位置監視実装を `ANDROID_LOCATION_NOTIFY_IMPL.md` に従って入れる

@@ -16,6 +16,10 @@ interface AndroidBridgeState {
   foregroundLocationGranted: boolean | null;
   backgroundLocationGranted: boolean | null;
   lastNotificationTestAt: string | null;
+  homeStationName: string | null;
+  dropoffTargetName: string | null;
+  lastDropoffNotificationAt: string | null;
+  lastDropoffNotificationStationName: string | null;
 }
 
 function getBooleanValue(payload: Record<string, unknown>, keys: string[]): boolean | null {
@@ -46,6 +50,10 @@ export function useAndroidBridgeState(): {
     foregroundLocationGranted: null,
     backgroundLocationGranted: null,
     lastNotificationTestAt: null,
+    homeStationName: null,
+    dropoffTargetName: null,
+    lastDropoffNotificationAt: null,
+    lastDropoffNotificationStationName: null,
   });
 
   useEffect(() => {
@@ -85,6 +93,22 @@ export function useAndroidBridgeState(): {
 
         if (event.type === 'notification.test.sent' || event.type === 'notification.sent') {
           nextState.lastNotificationTestAt = eventTimestamp;
+        }
+
+        if (event.type === 'homeStation.state') {
+          const station = payload.station as Record<string, unknown> | undefined;
+          nextState.homeStationName = typeof station?.name === 'string' ? station.name : null;
+        }
+
+        if (event.type === 'dropoffTarget.state') {
+          const station = payload.station as Record<string, unknown> | undefined;
+          nextState.dropoffTargetName = typeof station?.name === 'string' ? station.name : null;
+        }
+
+        if (event.type === 'dropoffTarget.notified') {
+          nextState.lastDropoffNotificationAt = eventTimestamp;
+          nextState.lastDropoffNotificationStationName =
+            typeof payload.stationName === 'string' ? payload.stationName : null;
         }
 
         return nextState;
