@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,19 +10,23 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { searchStations } from '../../src/services/stationService';
+import { getNearbyStations, searchStations } from '../../src/services/stationService';
 import { useAndroidBridgeState } from '../../src/hooks/useAndroidBridgeState';
 import { useStorage } from '../../src/hooks/useStorage';
 import { useLocation } from '../../src/hooks/useLocation';
 import { useNotifications } from '../../src/hooks/useNotifications';
 import { Station } from '../../src/types';
 import {
+  requestCurrentLocationFromAndroid,
   sendAndroidTestNotification,
   sendHomeStationToAndroid,
 } from '../../src/services/androidBridgeService';
 
 export default function SettingsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [androidNearbyStations, setAndroidNearbyStations] = useState<
+    Array<Station & { distance: number }>
+  >([]);
   const { state: androidBridgeState, actions: androidBridgeActions } = useAndroidBridgeState();
   const { state: storageState, actions: storageActions } = useStorage();
   const { state: locationState, actions: locationActions } = useLocation({
@@ -41,10 +45,30 @@ export default function SettingsScreen() {
     return searchStations(searchQuery).slice(0, 10);
   }, [searchQuery]);
 
-  const nearbyStationCandidates = useMemo(
-    () => locationState.nearbyStations.slice(0, 3),
-    [locationState.nearbyStations]
-  );
+  useEffect(() => {
+    if (
+      androidBridgeState.currentLatitude === null ||
+      androidBridgeState.currentLongitude === null
+    ) {
+      return;
+    }
+
+    const nextStations = getNearbyStations(
+      androidBridgeState.currentLatitude,
+      androidBridgeState.currentLongitude,
+      10000
+    ).slice(0, 3);
+
+    setAndroidNearbyStations(nextStations);
+  }, [androidBridgeState.currentLatitude, androidBridgeState.currentLongitude]);
+
+  const nearbyStationCandidates = useMemo(() => {
+    if (androidNearbyStations.length > 0) {
+      return androidNearbyStations;
+    }
+
+    return locationState.nearbyStations.slice(0, 3);
+  }, [androidNearbyStations, locationState.nearbyStations]);
 
   const handleSelectHomeStation = useCallback(async (station: Station) => {
     const homeStationSetting = {
@@ -85,12 +109,10 @@ export default function SettingsScreen() {
       }
     }
 
-    if (locationState.nearbyStations.length === 0) {
-      await locationActions.refreshLocation();
-    }
+    await locationActions.refreshLocation();
 
     return true;
-  }, [locationActions, locationState.nearbyStations.length, locationState.permissionStatus.foregroundGranted]);
+  }, [locationActions, locationState.permissionStatus.foregroundGranted]);
 
   const handleSetNearbyStationAsHome = useCallback(async (station: Station) => {
     const homeStationSetting = {
@@ -110,15 +132,19 @@ export default function SettingsScreen() {
   }, [storageActions]);
 
   const handleLoadNearbyStations = useCallback(async () => {
+    const requestedFromAndroid = requestCurrentLocationFromAndroid();
+    if (requestedFromAndroid) {
+      Alert.alert('最寄駅候補', 'Android の現在地取得を要求しました。少し待って再度確認してください。');
+      return;
+    }
+
     const ready = await ensureNearbyStationsLoaded();
     if (!ready) {
       return;
     }
 
-    if (locationState.nearbyStations.length === 0) {
-      Alert.alert('位置情報', '最寄駅を判定できませんでした。GPS環境を確認してください。');
-    }
-  }, [ensureNearbyStationsLoaded, locationState.nearbyStations.length]);
+    Alert.alert('最寄駅候補', '位置情報を取得しました。候補があればこの画面に表示されます。');
+  }, [ensureNearbyStationsLoaded]);
 
   const handleSendTestNotification = useCallback(async () => {
     const sentToAndroid = sendAndroidTestNotification(
@@ -200,21 +226,44 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>HOME駅</Text>
         </View>
 
-        {storageState.homeStation ? (
-          <View style={styles.homeStationCard}>
-            <Text style={styles.homeStationName}>{storageState.homeStation.station.name}駅</Text>
-            <Text style={styles.homeStationLines}>
-              {storageState.homeStation.station.lines.map((line) => line.name).join('・')}
-            </Text>
-            <TouchableOpacity style={styles.clearButton} onPress={handleClearHomeStation}>
-              <Text style={styles.clearButtonText}>ホーム駅を解除</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Text style={styles.placeholderText}>
-            まだホーム駅が設定されていません。
-          </Text>
-        )}
+        <View style={styles.stationCardsRow}>
+          {storageState.homeStation ? (
+            <View style={styles.homeStationCard}>
+              <Text style={styles.stationCardLabel}>HOME駅</Text>
+              <Text style={styles.homeStationName}>{storageState.homeStation.station.name}駅</Text>
+              <Text style={styles.homeStationLines}>
+                {storageState.homeStation.station.lines.map((line) => line.name).join('・')}
+              </Text>
+              <TouchableOpacity style={styles.clearButton} onPress={handleClearHomeStation}>
+                <Text style={styles.clearButtonText}>ホーム駅を解除</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.homeStationCard}>
+              <Text style={styles.stationCardLabel}>HOME駅</Text>
+              <Text style={styles.placeholderText}>
+                まだホーム駅が設定されていません。
+              </Text>
+            </View>
+          )}
+
+          {storageState.dropoffTarget ? (
+            <View style={styles.homeStationCard}>
+              <Text style={styles.stationCardLabel}>到着駅</Text>
+              <Text style={styles.homeStationName}>{storageState.dropoffTarget.station.name}駅</Text>
+              <Text style={styles.homeStationLines}>
+                {storageState.dropoffTarget.station.lines.map((line) => line.name).join('・')}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.homeStationCard}>
+              <Text style={styles.stationCardLabel}>到着駅</Text>
+              <Text style={styles.placeholderText}>
+                まだ到着駅が設定されていません。
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.sectionCard}>
@@ -238,7 +287,7 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>最寄駅候補数</Text>
-            <Text style={styles.statusValue}>{locationState.nearbyStations.length}件</Text>
+            <Text style={styles.statusValue}>{nearbyStationCandidates.length}件</Text>
           </View>
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>降車駅</Text>
@@ -264,6 +313,30 @@ export default function SettingsScreen() {
             <Text style={styles.statusLabel}>最終Androidイベント</Text>
             <Text style={styles.statusValue}>
               {androidBridgeState.lastEventType ?? '未受信'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android緯度</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.currentLatitude !== null
+                ? androidBridgeState.currentLatitude.toFixed(6)
+                : '-'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android経度</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.currentLongitude !== null
+                ? androidBridgeState.currentLongitude.toFixed(6)
+                : '-'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>候補駅名</Text>
+            <Text style={styles.statusValue}>
+              {nearbyStationCandidates.length > 0
+                ? nearbyStationCandidates.map((station) => station.name).join(' / ')
+                : '-'}
             </Text>
           </View>
           <View style={styles.statusRow}>
@@ -439,13 +512,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
   },
+  stationCardsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   homeStationCard: {
+    flex: 1,
     backgroundColor: '#EEF4FF',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
     borderColor: '#CFE0FF',
     gap: 4,
+  },
+  stationCardLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#355070',
   },
   homeStationName: {
     fontSize: 20,

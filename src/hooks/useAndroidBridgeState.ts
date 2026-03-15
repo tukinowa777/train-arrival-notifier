@@ -20,6 +20,8 @@ interface AndroidBridgeState {
   dropoffTargetName: string | null;
   lastDropoffNotificationAt: string | null;
   lastDropoffNotificationStationName: string | null;
+  currentLatitude: number | null;
+  currentLongitude: number | null;
 }
 
 function getBooleanValue(payload: Record<string, unknown>, keys: string[]): boolean | null {
@@ -54,6 +56,8 @@ export function useAndroidBridgeState(): {
     dropoffTargetName: null,
     lastDropoffNotificationAt: null,
     lastDropoffNotificationStationName: null,
+    currentLatitude: null,
+    currentLongitude: null,
   });
 
   useEffect(() => {
@@ -109,6 +113,13 @@ export function useAndroidBridgeState(): {
           nextState.lastDropoffNotificationAt = eventTimestamp;
           nextState.lastDropoffNotificationStationName =
             typeof payload.stationName === 'string' ? payload.stationName : null;
+        }
+
+        if (event.type === 'location.current') {
+          nextState.currentLatitude =
+            typeof payload.latitude === 'number' ? payload.latitude : null;
+          nextState.currentLongitude =
+            typeof payload.longitude === 'number' ? payload.longitude : null;
         }
 
         return nextState;

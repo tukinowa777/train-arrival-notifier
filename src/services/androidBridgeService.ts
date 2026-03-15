@@ -82,3 +82,7 @@ export function sendSelectedStationToAndroid(station: Station): boolean {
     station,
   });
 }
+
+export function requestCurrentLocationFromAndroid(): boolean {
+  return postAndroidBridgeMessage('location.getCurrent', {});
+}
