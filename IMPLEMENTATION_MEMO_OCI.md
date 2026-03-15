@@ -314,3 +314,4 @@ npm start
 - 2026-03-15 CODEX: Android -> Web 返却の次段階に備え、`useAndroidBridgeState.ts` を拡張。`homeStation.state`、`dropoffTarget.state`、`dropoffTarget.notified` を受信した際に Android 側保持中の HOME駅 / 到着駅 / 最終到着駅通知を保持するよう更新し、`app/(tabs)/settings.tsx` に Android 側の駅状態・通知履歴表示を追加。`ANDROID_BRIDGE_RESPONSE_IMPL.md` も初期同期と到着駅通知返却の実装例まで更新。
 - 2026-03-15 CODEX: Android Studio での反映手順を単純化するため、`ANDROID_MAIN_ACTIVITY_INTEGRATED.md` を追加。WebView、保存、権限返却、初期同期、前面位置監視、到着駅通知返却までを含む `MainActivity.kt` 完全版、必要な Manifest 権限、Gradle 依存、確認手順を 1 つに統合。
 - 2026-03-15 CODEX: 少人数テスト配布に進めるため、`ANDROID_LIMITED_TEST_RELEASE_GUIDE.md` を追加。debug APK の作成場所、テスターへの配布方法、端末での確認項目、通知・接近通知の回収観点、release APK / 内部テストへ進む条件を整理。
+- 2026-03-15 CODEX: Google Play Console 承認待ちの間に公開準備を前進させるため、`GOOGLE_PLAY_RELEASE_PREP.md` を追加。内部テストから本番公開までの推奨順、ストア掲載文言のたたき台、権限説明、バックグラウンド位置情報の判断、公開前チェックリスト、プライバシーポリシー記載項目を整理。
