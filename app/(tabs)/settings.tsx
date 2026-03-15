@@ -132,6 +132,27 @@ export default function SettingsScreen() {
   }, [storageActions]);
 
   const handleLoadNearbyStations = useCallback(async () => {
+    if (
+      androidBridgeState.currentLatitude !== null &&
+      androidBridgeState.currentLongitude !== null
+    ) {
+      const nextStations = getNearbyStations(
+        androidBridgeState.currentLatitude,
+        androidBridgeState.currentLongitude,
+        10000
+      ).slice(0, 3);
+
+      setAndroidNearbyStations(nextStations);
+
+      Alert.alert(
+        '最寄駅候補',
+        nextStations.length > 0
+          ? `${nextStations.map((station) => station.name).join(' / ')}`
+          : '現在地の近くに候補駅が見つかりませんでした。'
+      );
+      return;
+    }
+
     const requestedFromAndroid = requestCurrentLocationFromAndroid();
     if (requestedFromAndroid) {
       Alert.alert('最寄駅候補', 'Android の現在地取得を要求しました。少し待って再度確認してください。');
@@ -144,7 +165,11 @@ export default function SettingsScreen() {
     }
 
     Alert.alert('最寄駅候補', '位置情報を取得しました。候補があればこの画面に表示されます。');
-  }, [ensureNearbyStationsLoaded]);
+  }, [
+    androidBridgeState.currentLatitude,
+    androidBridgeState.currentLongitude,
+    ensureNearbyStationsLoaded,
+  ]);
 
   const handleSendTestNotification = useCallback(async () => {
     const sentToAndroid = sendAndroidTestNotification(
