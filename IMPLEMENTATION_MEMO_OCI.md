@@ -318,3 +318,4 @@ npm start
 - 2026-03-15 CODEX: 人間向けの仕様整理として `SOFTWARE_SPECIFICATION_JA.md` を追加。アプリの目的、画面構成、利用ソフトウェア、Web/Android の役割分担、通知・位置情報・ブリッジ仕様、サーバー配信構成、開発環境、リリース方針を読みやすい日本語で整理。
 - 2026-03-15 CODEX: 仕様整理を拡張。`APP_OVERVIEW_NONTECH_JA.md` を追加して非技術者向けの概要資料を作成し、`GOOGLE_PLAY_TEXT_TEMPLATE_JA.md` に Google Play 提出向けの短い説明・詳細説明・通知/位置情報説明文を整理。`SOFTWARE_SPECIFICATION_JA.md` の関連ドキュメント一覧にも反映した。
 - 2026-03-15 CODEX: リリース準備資料を追加拡張。`PRIVACY_POLICY_JA.md` に公開前のプライバシーポリシー草案を作成し、`AAB_RELEASE_STEPS_JA.md` に Google Play 内部テスト/公開用の署名付き AAB 作成手順を整理。`SOFTWARE_SPECIFICATION_JA.md` の関連資料一覧も更新。
+- 2026-03-15 CODEX: Android アプリ化をさらに進めるため、`ANDROID_FOREGROUND_SERVICE_IMPL.md` を追加。`LocationTrackingService.kt` を Foreground Service として実装する方針、必要な Manifest 権限と service 宣言、`dropoffTarget` を使った接近判定、Service 開始/停止を `MainActivity` へ組み込む Kotlin 例、確認項目を整理。
