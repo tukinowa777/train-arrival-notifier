@@ -13,3 +13,4 @@ yarn-error.log*
 Thumbs.db
 
 tmp/
+logs/
