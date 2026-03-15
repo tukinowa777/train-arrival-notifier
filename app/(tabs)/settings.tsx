@@ -19,7 +19,6 @@ import {
   sendAndroidTestNotification,
   sendHomeStationToAndroid,
 } from '../../src/services/androidBridgeService';
-import { sendAndroidTestNotification } from '../../src/services/androidBridgeService';
 
 export default function SettingsScreen() {
   const [searchQuery, setSearchQuery] = useState('');

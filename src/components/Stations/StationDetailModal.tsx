@@ -15,6 +15,7 @@ import { getAllNextTrains } from '../../services/stationService';
 import { useStorage } from '../../hooks/useStorage';
 import { useNotifications } from '../../hooks/useNotifications';
 import { createDropoffTarget } from '../../hooks/useDropoffNotifier';
+import { sendDropoffTargetToAndroid } from '../../services/androidBridgeService';
 
 export interface StationDetailModalProps {
   visible: boolean;
@@ -70,10 +71,12 @@ export default function StationDetailModal({
    */
   const handleSetDropoffStation = useCallback(async () => {
     try {
-      const success = await storageActions.setDropoffTarget(createDropoffTarget(station));
+      const dropoffTarget = createDropoffTarget(station);
+      const success = await storageActions.setDropoffTarget(dropoffTarget);
       if (!success) {
         throw new Error('dropoff target save failed');
       }
+      sendDropoffTargetToAndroid(dropoffTarget);
       Alert.alert('この駅で降りる', `${station.name}駅を降車駅に設定しました。到着3分前を目安に通知します。`);
     } catch (error) {
       Alert.alert('エラー', '降車駅の設定に失敗しました');

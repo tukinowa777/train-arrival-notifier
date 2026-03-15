@@ -15,6 +15,7 @@ import { useLocation } from '../../hooks/useLocation';
 import { useStorage } from '../../hooks/useStorage';
 import { useNotifications } from '../../hooks/useNotifications';
 import { createDropoffTarget } from '../../hooks/useDropoffNotifier';
+import { sendDropoffTargetToAndroid } from '../../services/androidBridgeService';
 import { Station } from '../../types';
 import {
   searchStations,
@@ -213,13 +214,15 @@ const StationsList = memo(function StationsList({
    * 降車駅を設定
    */
   const handleSetDropoffStation = useCallback(async (station: Station) => {
-    const success = await storageActions.setDropoffTarget(createDropoffTarget(station));
+    const dropoffTarget = createDropoffTarget(station);
+    const success = await storageActions.setDropoffTarget(dropoffTarget);
 
     if (!success) {
       Alert.alert('エラー', '降車駅の設定に失敗しました');
       return false;
     }
 
+    sendDropoffTargetToAndroid(dropoffTarget);
     Alert.alert('この駅で降りる', `${station.name}駅を降車駅に設定しました。到着3分前を目安に通知します。`);
     return true;
   }, [storageActions]);

@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDropoffNotifier } from '../../src/hooks/useDropoffNotifier';
+import { useAndroidBridgeSync } from '../../src/hooks/useAndroidBridgeSync';
 import { useStorage } from '../../src/hooks/useStorage';
 
 function AppHeaderTitle() {
@@ -24,6 +25,7 @@ function AppHeaderTitle() {
 
 export default function TabLayout() {
   useDropoffNotifier();
+  useAndroidBridgeSync();
 
   return (
     <Tabs
