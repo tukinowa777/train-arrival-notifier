@@ -208,6 +208,8 @@
 - TypeScript 全体の型エラーはまだ残っており、Web 側の完全な型整理は継続課題です。
 
 ## 14. 関連ドキュメント
+- `APP_OVERVIEW_NONTECH_JA.md`
+- `GOOGLE_PLAY_TEXT_TEMPLATE_JA.md`
 - `HYBRID_ANDROID_APP_PLAN.md`
 - `WEBVIEW_BRIDGE_SPEC.md`
 - `ANDROID_MAIN_ACTIVITY_INTEGRATED.md`

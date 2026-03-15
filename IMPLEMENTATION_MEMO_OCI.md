@@ -316,3 +316,4 @@ npm start
 - 2026-03-15 CODEX: 少人数テスト配布に進めるため、`ANDROID_LIMITED_TEST_RELEASE_GUIDE.md` を追加。debug APK の作成場所、テスターへの配布方法、端末での確認項目、通知・接近通知の回収観点、release APK / 内部テストへ進む条件を整理。
 - 2026-03-15 CODEX: Google Play Console 承認待ちの間に公開準備を前進させるため、`GOOGLE_PLAY_RELEASE_PREP.md` を追加。内部テストから本番公開までの推奨順、ストア掲載文言のたたき台、権限説明、バックグラウンド位置情報の判断、公開前チェックリスト、プライバシーポリシー記載項目を整理。
 - 2026-03-15 CODEX: 人間向けの仕様整理として `SOFTWARE_SPECIFICATION_JA.md` を追加。アプリの目的、画面構成、利用ソフトウェア、Web/Android の役割分担、通知・位置情報・ブリッジ仕様、サーバー配信構成、開発環境、リリース方針を読みやすい日本語で整理。
+- 2026-03-15 CODEX: 仕様整理を拡張。`APP_OVERVIEW_NONTECH_JA.md` を追加して非技術者向けの概要資料を作成し、`GOOGLE_PLAY_TEXT_TEMPLATE_JA.md` に Google Play 提出向けの短い説明・詳細説明・通知/位置情報説明文を整理。`SOFTWARE_SPECIFICATION_JA.md` の関連ドキュメント一覧にも反映した。
