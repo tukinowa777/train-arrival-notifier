@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { searchStations } from '../../src/services/stationService';
+import { useAndroidBridgeState } from '../../src/hooks/useAndroidBridgeState';
 import { useStorage } from '../../src/hooks/useStorage';
 import { useLocation } from '../../src/hooks/useLocation';
 import { useNotifications } from '../../src/hooks/useNotifications';
@@ -22,6 +23,7 @@ import {
 
 export default function SettingsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
+  const { state: androidBridgeState, actions: androidBridgeActions } = useAndroidBridgeState();
   const { state: storageState, actions: storageActions } = useStorage();
   const { state: locationState, actions: locationActions } = useLocation({
     watchPosition: false,
@@ -142,6 +144,33 @@ export default function SettingsScreen() {
     Alert.alert('通知テスト', '通知の送信に失敗しました。');
   }, [notificationActions]);
 
+  const handleRequestAndroidState = useCallback(() => {
+    const requested = androidBridgeActions.requestPermissionState();
+
+    if (!requested) {
+      Alert.alert('Android連携', 'Android アプリ連携が利用できません。WebView アプリから開いてください。');
+      return;
+    }
+
+    Alert.alert('Android連携', 'Android 側へ状態取得を要求しました。');
+  }, [androidBridgeActions]);
+
+  const androidNotificationStateLabel = useMemo(() => {
+    if (androidBridgeState.notificationPermissionGranted === null) {
+      return '-';
+    }
+
+    return androidBridgeState.notificationPermissionGranted ? '許可済み' : '未許可';
+  }, [androidBridgeState.notificationPermissionGranted]);
+
+  const androidLocationStateLabel = useMemo(() => {
+    if (androidBridgeState.foregroundLocationGranted === null) {
+      return '-';
+    }
+
+    return androidBridgeState.foregroundLocationGranted ? '許可済み' : '未許可';
+  }, [androidBridgeState.foregroundLocationGranted]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.sectionCard}>
@@ -196,6 +225,26 @@ export default function SettingsScreen() {
               {storageState.dropoffTarget ? `${storageState.dropoffTarget.station.name}駅` : '未設定'}
             </Text>
           </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android連携</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.isBridgeAvailable ? '接続中' : '未接続'}
+            </Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android通知権限</Text>
+            <Text style={styles.statusValue}>{androidNotificationStateLabel}</Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>Android位置権限</Text>
+            <Text style={styles.statusValue}>{androidLocationStateLabel}</Text>
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>最終Androidイベント</Text>
+            <Text style={styles.statusValue}>
+              {androidBridgeState.lastEventType ?? '未受信'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.debugButtonRow}>
@@ -213,6 +262,14 @@ export default function SettingsScreen() {
             <Text style={styles.secondaryButtonText}>位置情報を更新</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={styles.secondaryOutlineButton}
+          onPress={handleRequestAndroidState}
+        >
+          <Ionicons name="sync-outline" size={18} color="#007AFF" />
+          <Text style={styles.secondaryOutlineButtonText}>Android状態を取得</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.primaryDebugButton}
@@ -448,6 +505,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#007AFF',
     textAlign: 'center',
+  },
+  secondaryOutlineButton: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CFE0FF',
+    backgroundColor: '#F8FAFC',
+  },
+  secondaryOutlineButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#007AFF',
   },
   autoDetectLabel: {
     fontSize: 13,
