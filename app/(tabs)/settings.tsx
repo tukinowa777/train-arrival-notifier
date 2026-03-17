@@ -1,74 +1,64 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
   Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
-import { getNearbyStations, searchStations } from '../../src/services/stationService';
+import { getNearbyStations, calculateDistance } from '../../src/services/stationService';
 import { useAndroidBridgeState } from '../../src/hooks/useAndroidBridgeState';
-import { useStorage } from '../../src/hooks/useStorage';
 import { useLocation } from '../../src/hooks/useLocation';
-import { useNotifications } from '../../src/hooks/useNotifications';
-import { Station } from '../../src/types';
+import { useStorage } from '../../src/hooks/useStorage';
+import { getCurrentLocation } from '../../src/services/locationService';
 import {
   requestCurrentLocationFromAndroid,
-  sendAndroidTestNotification,
+  sendDropoffTargetToAndroid,
   sendHomeStationToAndroid,
 } from '../../src/services/androidBridgeService';
+import { Station } from '../../src/types';
+import { getEstimatedArrivalMinutes } from '../../src/hooks/useDropoffNotifier';
 
 export default function SettingsScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [androidNearbyStations, setAndroidNearbyStations] = useState<
-    Array<Station & { distance: number }>
-  >([]);
-  const { state: androidBridgeState, actions: androidBridgeActions } = useAndroidBridgeState();
+  const [isLoadingNearbyStations, setIsLoadingNearbyStations] = useState(false);
+  const [isCurrentLocationSheetVisible, setIsCurrentLocationSheetVisible] = useState(false);
+  const [sleepSummary, setSleepSummary] = useState<string | null>(null);
   const { state: storageState, actions: storageActions } = useStorage();
+  const { state: androidBridgeState } = useAndroidBridgeState();
   const { state: locationState, actions: locationActions } = useLocation({
     watchPosition: false,
     autoRequestPermissions: false,
   });
-  const { state: notificationState, actions: notificationActions } = useNotifications({
-    autoRequestPermission: false,
-  });
-
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return [];
-    }
-
-    return searchStations(searchQuery).slice(0, 10);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (
-      androidBridgeState.currentLatitude === null ||
-      androidBridgeState.currentLongitude === null
-    ) {
-      return;
-    }
-
-    const nextStations = getNearbyStations(
-      androidBridgeState.currentLatitude,
-      androidBridgeState.currentLongitude,
-      10000
-    ).slice(0, 3);
-
-    setAndroidNearbyStations(nextStations);
-  }, [androidBridgeState.currentLatitude, androidBridgeState.currentLongitude]);
 
   const nearbyStationCandidates = useMemo(() => {
-    if (androidNearbyStations.length > 0) {
-      return androidNearbyStations;
+    if (locationState.currentLocation) {
+      return getNearbyStations(
+        locationState.currentLocation.coords.latitude,
+        locationState.currentLocation.coords.longitude,
+        10000
+      ).slice(0, 3);
+    }
+
+    if (
+      androidBridgeState.currentLatitude !== null &&
+      androidBridgeState.currentLongitude !== null
+    ) {
+      return getNearbyStations(
+        androidBridgeState.currentLatitude,
+        androidBridgeState.currentLongitude,
+        10000
+      ).slice(0, 3);
     }
 
     return locationState.nearbyStations.slice(0, 3);
-  }, [androidNearbyStations, locationState.nearbyStations]);
+  }, [
+    androidBridgeState.currentLatitude,
+    androidBridgeState.currentLongitude,
+    locationState.nearbyStations,
+  ]);
 
   const handleSelectHomeStation = useCallback(async (station: Station) => {
     const homeStationSetting = {
@@ -77,432 +67,280 @@ export default function SettingsScreen() {
     };
 
     const success = await storageActions.setHomeStation(homeStationSetting);
-
     if (!success) {
-      Alert.alert('エラー', 'ホーム駅の設定に失敗しました');
+      Alert.alert('エラー', '現在地の設定に失敗しました。');
       return;
     }
 
     sendHomeStationToAndroid(homeStationSetting);
-    setSearchQuery('');
-    Alert.alert('ホーム駅', `${station.name}駅をホーム駅に設定しました。`);
+    Alert.alert('現在地', `${station.name}駅を出発駅として設定しました。`);
   }, [storageActions]);
 
-  const handleClearHomeStation = useCallback(async () => {
-    const success = await storageActions.setHomeStation(null);
-
-    if (!success) {
-      Alert.alert('エラー', 'ホーム駅の解除に失敗しました');
+  const showNearbyStationSelector = useCallback((stations: Array<Station & { distance: number }>) => {
+    if (stations.length === 0) {
+      Alert.alert('現在地', '近くの駅候補が見つかりませんでした。');
       return;
     }
 
-    sendHomeStationToAndroid(null);
-    Alert.alert('ホーム駅', 'ホーム駅を解除しました。');
-  }, [storageActions]);
+    Alert.alert(
+      '現在地',
+      '近い駅を選んでください。',
+      [
+        ...stations.map((station) => ({
+          text: `${station.name}駅`,
+          onPress: () => {
+            void handleSelectHomeStation(station);
+          },
+        })),
+        {
+          text: 'キャンセル',
+          style: 'cancel' as const,
+        },
+      ]
+    );
+  }, [handleSelectHomeStation]);
 
-  const ensureNearbyStationsLoaded = useCallback(async () => {
-    if (!locationState.permissionStatus.foregroundGranted) {
-      const granted = await locationActions.requestForegroundPermission();
-      if (!granted) {
-        Alert.alert('位置情報', '位置情報の権限が必要です。');
-        return false;
-      }
+  const handleSetAutoDetectedHomeStation = useCallback(async (
+    stations: Array<Station & { distance: number }>
+  ) => {
+    const closestStation = stations[0];
+
+    if (!closestStation) {
+      Alert.alert('現在地', '近くの駅候補が見つかりませんでした。');
+      return;
     }
 
-    await locationActions.refreshLocation();
+    await handleSelectHomeStation(closestStation);
+  }, [handleSelectHomeStation]);
 
-    return true;
-  }, [locationActions, locationState.permissionStatus.foregroundGranted]);
+  const handleManualHomeStationPress = useCallback(() => {
+    setIsCurrentLocationSheetVisible(false);
+    router.push('/dropoff-station?mode=home');
+  }, []);
 
-  const handleSetNearbyStationAsHome = useCallback(async (station: Station) => {
-    const homeStationSetting = {
-      station,
+  const handleAutoDetectHomeStationPress = useCallback(async () => {
+    setIsCurrentLocationSheetVisible(false);
+    if (nearbyStationCandidates.length > 0) {
+      await handleSetAutoDetectedHomeStation(nearbyStationCandidates);
+      return;
+    }
+
+    setIsLoadingNearbyStations(true);
+
+    try {
+      if (!locationState.permissionStatus.foregroundGranted) {
+        const granted = await locationActions.requestForegroundPermission();
+        if (!granted) {
+          if (requestCurrentLocationFromAndroid()) {
+            Alert.alert('現在地', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
+            return;
+          }
+
+          Alert.alert('現在地', '位置情報の権限が必要です。');
+          return;
+        }
+      }
+
+      const currentLocation = await getCurrentLocation();
+      if (currentLocation) {
+        const refreshedCandidates = getNearbyStations(
+          currentLocation.coords.latitude,
+          currentLocation.coords.longitude,
+          10000
+        ).slice(0, 3);
+
+        if (refreshedCandidates.length > 0) {
+          await handleSetAutoDetectedHomeStation(refreshedCandidates);
+          return;
+        }
+      }
+
+      await locationActions.refreshLocation();
+
+      const refreshedCandidates = nearbyStationCandidates;
+      if (refreshedCandidates.length > 0) {
+        await handleSetAutoDetectedHomeStation(refreshedCandidates);
+        return;
+      }
+
+      if (requestCurrentLocationFromAndroid()) {
+        Alert.alert('現在地', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
+        return;
+      }
+
+      Alert.alert('現在地', '近くの駅候補を取得できませんでした。');
+    } finally {
+      setIsLoadingNearbyStations(false);
+    }
+  }, [
+    locationActions,
+    locationState.permissionStatus.foregroundGranted,
+    handleSetAutoDetectedHomeStation,
+    nearbyStationCandidates,
+  ]);
+
+  const handleCurrentLocationPress = useCallback(() => {
+    setIsCurrentLocationSheetVisible(true);
+  }, []);
+
+  const handleDropoffStationPress = useCallback(() => {
+    router.push('/dropoff-station?mode=dropoff');
+  }, []);
+
+  const handleSleepPress = useCallback(async () => {
+    if (!storageState.dropoffTarget) {
+      Alert.alert('寝る', '先に降車駅を設定してください。');
+      return;
+    }
+
+    const currentLatitude =
+      locationState.currentLocation?.coords.latitude ?? androidBridgeState.currentLatitude;
+    const currentLongitude =
+      locationState.currentLocation?.coords.longitude ?? androidBridgeState.currentLongitude;
+
+    const fallbackLatitude = storageState.homeStation?.station.latitude ?? null;
+    const fallbackLongitude = storageState.homeStation?.station.longitude ?? null;
+
+    const originLatitude = currentLatitude ?? fallbackLatitude;
+    const originLongitude = currentLongitude ?? fallbackLongitude;
+
+    if (originLatitude === null || originLongitude === null) {
+      Alert.alert('寝る', '先に現在地を取得するか、出発駅を設定してください。');
+      return;
+    }
+
+    const distanceMeters = calculateDistance(
+      originLatitude,
+      originLongitude,
+      storageState.dropoffTarget.station.latitude,
+      storageState.dropoffTarget.station.longitude
+    );
+    const estimatedArrivalMinutes = getEstimatedArrivalMinutes(
+      distanceMeters,
+      locationState.currentLocation?.coords.speed
+    );
+    const roundedSleepMinutes = Math.max(0, Math.floor(estimatedArrivalMinutes - 2));
+
+    const nextDropoffTarget = {
+      ...storageState.dropoffTarget,
+      enabled: true,
+      notified: false,
+      notifyBeforeMinutes: 2,
+      notifiedAt: undefined,
       setAt: new Date().toISOString(),
     };
 
-    const success = await storageActions.setHomeStation(homeStationSetting);
-
+    const success = await storageActions.setDropoffTarget(nextDropoffTarget);
     if (!success) {
-      Alert.alert('エラー', '最寄駅のHOME設定に失敗しました');
+      Alert.alert('寝る', '通知待機の開始に失敗しました。');
       return;
     }
 
-    sendHomeStationToAndroid(homeStationSetting);
-    Alert.alert('HOME駅', `${station.name}駅を最寄駅候補から設定しました。`);
-  }, [storageActions]);
-
-  const handleLoadNearbyStations = useCallback(async () => {
-    if (
-      androidBridgeState.currentLatitude !== null &&
-      androidBridgeState.currentLongitude !== null
-    ) {
-      const nextStations = getNearbyStations(
-        androidBridgeState.currentLatitude,
-        androidBridgeState.currentLongitude,
-        10000
-      ).slice(0, 3);
-
-      setAndroidNearbyStations(nextStations);
-
-      Alert.alert(
-        '最寄駅候補',
-        nextStations.length > 0
-          ? `${nextStations.map((station) => station.name).join(' / ')}`
-          : '現在地の近くに候補駅が見つかりませんでした。'
-      );
-      return;
+    if (storageState.homeStation) {
+      sendHomeStationToAndroid(storageState.homeStation);
     }
+    sendDropoffTargetToAndroid(nextDropoffTarget);
 
-    const requestedFromAndroid = requestCurrentLocationFromAndroid();
-    if (requestedFromAndroid) {
-      Alert.alert('最寄駅候補', 'Android の現在地取得を要求しました。少し待って再度確認してください。');
-      return;
-    }
-
-    const ready = await ensureNearbyStationsLoaded();
-    if (!ready) {
-      return;
-    }
-
-    Alert.alert('最寄駅候補', '位置情報を取得しました。候補があればこの画面に表示されます。');
+    setSleepSummary(
+      `${nextDropoffTarget.station.name}駅まで約${Math.ceil(estimatedArrivalMinutes)}分です。あと約${roundedSleepMinutes}分寝られます。到着2分前に通知とバイブでお知らせします。`
+    );
   }, [
     androidBridgeState.currentLatitude,
     androidBridgeState.currentLongitude,
-    ensureNearbyStationsLoaded,
-  ]);
-
-  const handleSendTestNotification = useCallback(async () => {
-    const sentToAndroid = sendAndroidTestNotification(
-      '通知テスト',
-      '到着駅教える君β の通知テストです。'
-    );
-
-    if (sentToAndroid) {
-      Alert.alert('通知テスト', 'Android アプリへ通知テストを送信しました。');
-      return;
-    }
-
-    const notificationId = await notificationActions.sendNotification(
-      '通知テスト',
-      '到着駅教える君β の通知テストです。'
-    );
-
-    if (notificationId) {
-      Alert.alert('通知テスト', '通知を送信しました。');
-      return;
-    }
-
-    Alert.alert('通知テスト', '通知の送信に失敗しました。');
-  }, [notificationActions]);
-
-  const handleRequestAndroidState = useCallback(() => {
-    const requested = androidBridgeActions.requestPermissionState();
-
-    if (!requested) {
-      Alert.alert('Android連携', 'Android アプリ連携が利用できません。WebView アプリから開いてください。');
-      return;
-    }
-
-    Alert.alert('Android連携', 'Android 側へ状態取得を要求しました。');
-  }, [androidBridgeActions]);
-
-  const androidNotificationStateLabel = useMemo(() => {
-    if (androidBridgeState.notificationPermissionGranted === null) {
-      return '-';
-    }
-
-    return androidBridgeState.notificationPermissionGranted ? '許可済み' : '未許可';
-  }, [androidBridgeState.notificationPermissionGranted]);
-
-  const androidLocationStateLabel = useMemo(() => {
-    if (androidBridgeState.foregroundLocationGranted === null) {
-      return '-';
-    }
-
-    return androidBridgeState.foregroundLocationGranted ? '許可済み' : '未許可';
-  }, [androidBridgeState.foregroundLocationGranted]);
-
-  const androidLastNotificationLabel = useMemo(() => {
-    if (!androidBridgeState.lastNotificationTestAt) {
-      return '-';
-    }
-
-    return new Date(androidBridgeState.lastNotificationTestAt).toLocaleString('ja-JP');
-  }, [androidBridgeState.lastNotificationTestAt]);
-
-  const androidLastDropoffLabel = useMemo(() => {
-    if (!androidBridgeState.lastDropoffNotificationAt) {
-      return '-';
-    }
-
-    const notifiedAt = new Date(androidBridgeState.lastDropoffNotificationAt).toLocaleString('ja-JP');
-    const stationName = androidBridgeState.lastDropoffNotificationStationName;
-    return stationName ? `${stationName}駅 / ${notifiedAt}` : notifiedAt;
-  }, [
-    androidBridgeState.lastDropoffNotificationAt,
-    androidBridgeState.lastDropoffNotificationStationName,
+    locationState.currentLocation,
+    storageActions,
+    storageState.dropoffTarget,
+    storageState.homeStation,
   ]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="home-outline" size={20} color="#007AFF" />
-          <Text style={styles.sectionTitle}>HOME駅</Text>
-        </View>
-
-        <View style={styles.stationCardsRow}>
-          {storageState.homeStation ? (
-            <View style={styles.homeStationCard}>
-              <Text style={styles.stationCardLabel}>HOME駅</Text>
-              <Text style={styles.homeStationName}>{storageState.homeStation.station.name}駅</Text>
-              <Text style={styles.homeStationLines}>
-                {storageState.homeStation.station.lines.map((line) => line.name).join('・')}
-              </Text>
-              <TouchableOpacity style={styles.clearButton} onPress={handleClearHomeStation}>
-                <Text style={styles.clearButtonText}>ホーム駅を解除</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.homeStationCard}>
-              <Text style={styles.stationCardLabel}>HOME駅</Text>
-              <Text style={styles.placeholderText}>
-                まだホーム駅が設定されていません。
-              </Text>
-            </View>
-          )}
-
-          {storageState.dropoffTarget ? (
-            <View style={styles.homeStationCard}>
-              <Text style={styles.stationCardLabel}>到着駅</Text>
-              <Text style={styles.homeStationName}>{storageState.dropoffTarget.station.name}駅</Text>
-              <Text style={styles.homeStationLines}>
-                {storageState.dropoffTarget.station.lines.map((line) => line.name).join('・')}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.homeStationCard}>
-              <Text style={styles.stationCardLabel}>到着駅</Text>
-              <Text style={styles.placeholderText}>
-                まだ到着駅が設定されていません。
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.heroBlock}>
+        <Text style={styles.eyebrow}>Train Arrival Notifier</Text>
+        <Text style={styles.title}>降りる駅教える君β</Text>
+        <Text style={styles.subtitle}>
+          触る場所を最小限に絞った、通知開始のためのホーム画面です。
+        </Text>
       </View>
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="construct-outline" size={20} color="#007AFF" />
-          <Text style={styles.sectionTitle}>Android通知確認</Text>
-        </View>
-
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>通知権限</Text>
-            <Text style={styles.statusValue}>
-              {notificationState.permissionGranted ? '許可済み' : '未許可'}
+      <View style={styles.topRow}>
+        <TouchableOpacity style={styles.squareButton} onPress={() => void handleCurrentLocationPress()}>
+          <View style={styles.buttonContent}>
+            <Text style={styles.buttonLabel}>Start</Text>
+            <Text style={styles.squareButtonText}>現在地</Text>
+            <Text style={styles.buttonSubtext}>
+              {isLoadingNearbyStations
+                ? '取得中'
+                : storageState.homeStation
+                  ? `${storageState.homeStation.station.name}駅`
+                  : '未設定'}
             </Text>
           </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>位置情報権限</Text>
-            <Text style={styles.statusValue}>
-              {locationState.permissionStatus.foregroundGranted ? '許可済み' : '未許可'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>最寄駅候補数</Text>
-            <Text style={styles.statusValue}>{nearbyStationCandidates.length}件</Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>降車駅</Text>
-            <Text style={styles.statusValue}>
-              {storageState.dropoffTarget ? `${storageState.dropoffTarget.station.name}駅` : '未設定'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android連携</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.isBridgeAvailable ? '接続中' : '未接続'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android通知権限</Text>
-            <Text style={styles.statusValue}>{androidNotificationStateLabel}</Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android位置権限</Text>
-            <Text style={styles.statusValue}>{androidLocationStateLabel}</Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>最終Androidイベント</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.lastEventType ?? '未受信'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android緯度</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.currentLatitude !== null
-                ? androidBridgeState.currentLatitude.toFixed(6)
-                : '-'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android経度</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.currentLongitude !== null
-                ? androidBridgeState.currentLongitude.toFixed(6)
-                : '-'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>候補駅名</Text>
-            <Text style={styles.statusValue}>
-              {nearbyStationCandidates.length > 0
-                ? nearbyStationCandidates.map((station) => station.name).join(' / ')
-                : '-'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android HOME駅</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.homeStationName ? `${androidBridgeState.homeStationName}駅` : '-'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Android 到着駅</Text>
-            <Text style={styles.statusValue}>
-              {androidBridgeState.dropoffTargetName ? `${androidBridgeState.dropoffTargetName}駅` : '-'}
-            </Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>最終通知テスト</Text>
-            <Text style={styles.statusValue}>{androidLastNotificationLabel}</Text>
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>最終到着駅通知</Text>
-            <Text style={styles.statusValue}>{androidLastDropoffLabel}</Text>
-          </View>
-        </View>
-
-        <View style={styles.debugButtonRow}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => notificationActions.requestPermission()}
-          >
-            <Text style={styles.secondaryButtonText}>通知権限を確認</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => locationActions.refreshLocation()}
-          >
-            <Text style={styles.secondaryButtonText}>位置情報を更新</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={styles.secondaryOutlineButton}
-          onPress={handleRequestAndroidState}
-        >
-          <Ionicons name="sync-outline" size={18} color="#007AFF" />
-          <Text style={styles.secondaryOutlineButtonText}>Android状態を取得</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.primaryDebugButton}
-          onPress={handleSendTestNotification}
-        >
-          <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryDebugButtonText}>通知テストを送信</Text>
+        <TouchableOpacity style={styles.squareButton} onPress={handleDropoffStationPress}>
+          <View style={styles.buttonContent}>
+            <Text style={styles.buttonLabel}>Target</Text>
+            <Text style={styles.squareButtonText}>降車駅</Text>
+            <Text style={styles.buttonSubtext}>
+              {storageState.dropoffTarget
+                ? `${storageState.dropoffTarget.station.name}駅`
+                : '未設定'}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="locate-outline" size={20} color="#007AFF" />
-          <Text style={styles.sectionTitle}>GPSで最寄駅を自動判定</Text>
-        </View>
-
-        <View style={styles.autoDetectCard}>
-          <Text style={styles.autoDetectLabel}>現在の最寄駅候補（最大3件）</Text>
-          <Text style={styles.autoDetectSubtext}>
-            {nearbyStationCandidates.length > 0
-              ? '候補の中からHOME駅を選択してください。'
-              : '位置情報の権限を許可して最寄駅候補を取得します。'}
+      <TouchableOpacity style={styles.sleepButton} onPress={() => void handleSleepPress()}>
+        <View style={styles.buttonContent}>
+          <Text style={styles.buttonLabel}>Ready</Text>
+          <Text style={styles.sleepButtonText}>寝る</Text>
+          <Text style={styles.buttonSubtext}>
+            {storageState.dropoffTarget
+              ? `${storageState.dropoffTarget.station.name}駅で通知`
+              : '降車駅を設定してください'}
           </Text>
-
-          <TouchableOpacity
-            style={styles.autoDetectButton}
-            onPress={handleLoadNearbyStations}
-          >
-            <Ionicons name="navigate-circle-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.autoDetectButtonText}>最寄駅候補を取得</Text>
-          </TouchableOpacity>
-
-          {nearbyStationCandidates.length > 0 && (
-            <View style={styles.nearbyCandidatesList}>
-              {nearbyStationCandidates.map((station) => (
-                <TouchableOpacity
-                  key={station.id}
-                  style={styles.nearbyCandidateItem}
-                  onPress={() => handleSetNearbyStationAsHome(station)}
-                >
-                  <View>
-                    <Text style={styles.nearbyCandidateName}>{station.name}駅</Text>
-                    <Text style={styles.nearbyCandidateMeta}>
-                      {station.lines.map((line) => line.name).join('・')}
-                      {' '}・ 約{Math.round(station.distance)}m
-                    </Text>
-                  </View>
-                  <Ionicons name="home-outline" size={18} color="#007AFF" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
         </View>
-      </View>
+      </TouchableOpacity>
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="search" size={20} color="#007AFF" />
-          <Text style={styles.sectionTitle}>HOME駅を検索</Text>
+      {sleepSummary && (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>睡眠時間の目安</Text>
+          <Text style={styles.summaryText}>{sleepSummary}</Text>
         </View>
+      )}
 
-        <View style={styles.searchBox}>
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="駅名を入力してください"
-            style={styles.searchInput}
-          />
-        </View>
+      {isCurrentLocationSheetVisible && (
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheetCard}>
+            <Text style={styles.sheetTitle}>出発駅の設定</Text>
+            <Text style={styles.sheetText}>設定方法を選んでください。</Text>
 
-        {searchResults.length > 0 && (
-          <View style={styles.resultsList}>
-            {searchResults.map((station) => (
-              <TouchableOpacity
-                key={station.id}
-                style={styles.resultItem}
-                onPress={() => handleSelectHomeStation(station)}
-              >
-                <View>
-                  <Text style={styles.resultName}>{station.name}駅</Text>
-                  <Text style={styles.resultLines}>
-                    {station.lines.map((line) => line.name).join('・')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              style={styles.sheetActionButton}
+              onPress={() => void handleAutoDetectHomeStationPress()}
+            >
+              <Text style={styles.sheetActionTitle}>GPSで自動取得</Text>
+              <Text style={styles.sheetActionText}>近くの駅候補から出発駅を設定します。</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetActionButton}
+              onPress={handleManualHomeStationPress}
+            >
+              <Text style={styles.sheetActionTitle}>自分で出発駅を選ぶ</Text>
+              <Text style={styles.sheetActionText}>駅名検索で手動設定します。</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetCloseButton}
+              onPress={() => setIsCurrentLocationSheetVisible(false)}
+            >
+              <Text style={styles.sheetCloseText}>閉じる</Text>
+            </TouchableOpacity>
           </View>
-        )}
-
-        {!!searchQuery && searchResults.length === 0 && (
-          <Text style={styles.placeholderText}>該当する駅が見つかりません。</Text>
-        )}
-      </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -510,251 +348,194 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F5F5F7',
   },
   content: {
-    padding: 16,
-    gap: 16,
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 48,
   },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
+  heroBlock: {
+    marginTop: 8,
+    marginBottom: 44,
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  stationCardsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  homeStationCard: {
-    flex: 1,
-    backgroundColor: '#EEF4FF',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#CFE0FF',
-    gap: 4,
-  },
-  stationCardLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#355070',
-  },
-  homeStationName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  homeStationLines: {
-    fontSize: 14,
-    color: '#355070',
-  },
-  clearButton: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#D0D7E2',
-  },
-  clearButtonText: {
-    fontSize: 13,
+  eyebrow: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: '#8E8E93',
   },
-  searchBox: {
-    borderWidth: 1,
-    borderColor: '#D0D7E2',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-  },
-  autoDetectCard: {
-    backgroundColor: '#EEF4FF',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#CFE0FF',
-  },
-  statusCard: {
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusLabel: {
-    fontSize: 14,
-    color: '#475569',
-  },
-  statusValue: {
-    flexShrink: 1,
-    fontSize: 14,
+  title: {
+    marginTop: 10,
+    fontSize: 36,
     fontWeight: '700',
-    color: '#1F2937',
-    textAlign: 'right',
+    textAlign: 'center',
+    color: '#1D1D1F',
+    letterSpacing: -0.9,
   },
-  debugButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
+  subtitle: {
     marginTop: 12,
+    maxWidth: 320,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    color: '#6E6E73',
   },
-  primaryDebugButton: {
-    marginTop: 12,
+  topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#007AFF',
+    gap: 14,
   },
-  primaryDebugButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  secondaryButton: {
+  squareButton: {
     flex: 1,
+    minHeight: 192,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.72)',
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: '#EEF4FF',
-    borderWidth: 1,
-    borderColor: '#CFE0FF',
+    backgroundColor: '#FBFBFD',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.1,
+    shadowRadius: 30,
+    elevation: 4,
   },
-  secondaryButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#007AFF',
+  buttonContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  buttonLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: '#8E8E93',
     textAlign: 'center',
   },
-  secondaryOutlineButton: {
-    marginTop: 12,
-    flexDirection: 'row',
+  squareButtonText: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#1D1D1F',
+    letterSpacing: -0.7,
+    textAlign: 'center',
+  },
+  sleepButton: {
+    minHeight: 188,
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.82)',
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#CFE0FF',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.1,
+    shadowRadius: 34,
+    elevation: 5,
   },
-  secondaryOutlineButtonText: {
-    fontSize: 13,
+  sleepButtonText: {
+    fontSize: 42,
     fontWeight: '700',
-    color: '#007AFF',
+    color: '#1D1D1F',
+    letterSpacing: -1,
+    textAlign: 'center',
   },
-  autoDetectLabel: {
+  buttonSubtext: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#6E6E73',
+    textAlign: 'center',
+  },
+  summaryCard: {
+    marginTop: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(60, 60, 67, 0.08)',
+  },
+  summaryTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#355070',
+    color: '#8E8E93',
   },
-  autoDetectSubtext: {
+  summaryText: {
     marginTop: 8,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#64748B',
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#1D1D1F',
   },
-  autoDetectButton: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#007AFF',
+  sheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
-  autoDetectButtonText: {
-    fontSize: 14,
+  sheetCard: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: '#F5F5F7',
+    gap: 12,
+  },
+  sheetTitle: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#1D1D1F',
+    textAlign: 'center',
   },
-  nearbyCandidatesList: {
-    marginTop: 12,
-    gap: 8,
+  sheetText: {
+    fontSize: 14,
+    color: '#6E6E73',
+    textAlign: 'center',
   },
-  nearbyCandidateItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+  sheetActionButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D7E6FF',
+    borderColor: 'rgba(60, 60, 67, 0.08)',
   },
-  nearbyCandidateName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1F2937',
+  sheetActionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1D1D1F',
+    textAlign: 'center',
   },
-  nearbyCandidateMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#64748B',
+  sheetActionText: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#6E6E73',
+    textAlign: 'center',
   },
-  searchInput: {
-    height: 48,
-    fontSize: 16,
-    color: '#1F2937',
+  sheetCloseButton: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#EAEAED',
   },
-  resultsList: {
-    marginTop: 12,
-    gap: 8,
-  },
-  resultItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  resultName: {
+  sheetCloseText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
-  },
-  resultLines: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  placeholderText: {
-    fontSize: 14,
-    color: '#64748B',
+    color: '#1D1D1F',
+    textAlign: 'center',
   },
 });

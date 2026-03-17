@@ -11,11 +11,11 @@ function AppHeaderTitle() {
   return (
     <View style={styles.headerTitleContainer}>
       <Text style={styles.headerTitle}>到着駅教える君β</Text>
-      {storageState.homeStation && (
+      {storageState.dropoffTarget && (
         <View style={styles.homeStationChip}>
-          <Ionicons name="home" size={14} color="#FFFFFF" />
+          <Ionicons name="navigate" size={14} color="#FFFFFF" />
           <Text style={styles.homeStationChipText}>
-            {storageState.homeStation.station.name}駅
+            {storageState.dropoffTarget.station.name}駅
           </Text>
         </View>
       )}
@@ -39,7 +39,7 @@ export default function TabLayout() {
           elevation: 0,
         },
         headerStyle: {
-          backgroundColor: '#007AFF',
+          backgroundColor: '#1E3A5F',
         },
         headerTintColor: '#fff',
         headerTitle: () => <AppHeaderTitle />,
