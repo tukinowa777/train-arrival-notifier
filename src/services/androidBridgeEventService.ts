@@ -21,7 +21,12 @@ declare global {
  * Android 側からのメッセージ受信口を初期化する
  */
 export function ensureAndroidBridgeEventHandler(): void {
-  if (typeof window === 'undefined' || window.handleAndroidBridgeMessage) {
+  if (
+    typeof window === 'undefined' ||
+    window.handleAndroidBridgeMessage ||
+    typeof window.dispatchEvent !== 'function' ||
+    typeof CustomEvent !== 'function'
+  ) {
     return;
   }
 
@@ -43,7 +48,11 @@ export function ensureAndroidBridgeEventHandler(): void {
  * Android 側からのイベントを購読する
  */
 export function subscribeAndroidBridgeEvents(listener: AndroidBridgeEventListener): () => void {
-  if (typeof window === 'undefined') {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.addEventListener !== 'function' ||
+    typeof window.removeEventListener !== 'function'
+  ) {
     return () => undefined;
   }
 

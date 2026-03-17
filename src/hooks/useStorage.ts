@@ -161,7 +161,11 @@ export function useStorage(options: UseStorageOptions = {}): {
    * Webの同一タブ内でストレージ更新を共有する
    */
   const emitStorageSync = useCallback(() => {
-    if (typeof window !== 'undefined') {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.dispatchEvent === 'function' &&
+      typeof CustomEvent === 'function'
+    ) {
       window.dispatchEvent(new CustomEvent(STORAGE_SYNC_EVENT));
     }
   }, []);
@@ -739,7 +743,11 @@ export function useStorage(options: UseStorageOptions = {}): {
   }, [opts.autoLoad]); // 依存配列からloadAllDataとhandleAppStateChangeを除去して無限ループを防止
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.addEventListener !== 'function' ||
+      typeof window.removeEventListener !== 'function'
+    ) {
       return;
     }
 
