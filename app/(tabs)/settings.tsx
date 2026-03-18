@@ -259,7 +259,7 @@ export default function SettingsScreen() {
         <Text style={styles.eyebrow}>Train Arrival Notifier</Text>
         <Text style={styles.title}>降りる駅教える君β</Text>
         <Text style={styles.subtitle}>
-          触る場所を最小限に絞った、通知開始のためのホーム画面です。
+          降りる駅の近くまで来たら、知らせるよ
         </Text>
       </View>
 
@@ -294,7 +294,7 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.sleepButton} onPress={() => void handleSleepPress()}>
         <View style={styles.buttonContent}>
           <Text style={styles.buttonLabel}>Ready</Text>
-          <Text style={styles.sleepButtonText}>寝る</Text>
+          <Text style={styles.sleepButtonText}>START</Text>
           <Text style={styles.buttonSubtext}>
             {storageState.dropoffTarget
               ? `${storageState.dropoffTarget.station.name}駅で通知`
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   sleepButtonText: {
-    fontSize: 42,
+    fontSize: 34,
     fontWeight: '700',
     color: '#1D1D1F',
     letterSpacing: -1,
@@ -472,8 +472,8 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     marginTop: 8,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 26,
     color: '#1D1D1F',
   },
   sheetOverlay: {
