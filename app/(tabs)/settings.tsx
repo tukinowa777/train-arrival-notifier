@@ -348,7 +348,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F7',
+    backgroundColor: '#F3FAFF',
   },
   content: {
     flexGrow: 1,
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-    color: '#8E8E93',
+    color: '#4D9BCF',
   },
   title: {
     marginTop: 10,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
-    color: '#6E6E73',
+    color: '#4A647C',
   },
   topRow: {
     flexDirection: 'row',
@@ -394,14 +394,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.72)',
+    borderColor: '#D3EEFA',
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FBFBFD',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 30,
     elevation: 4,
   },
@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-    color: '#8E8E93',
+    color: '#0DA6D8',
     textAlign: 'center',
   },
   squareButtonText: {
@@ -432,14 +432,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.82)',
+    borderColor: '#FFE08A',
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFF8D8',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 34,
     elevation: 5,
   },
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   buttonSubtext: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#6E6E73',
+    color: '#4A647C',
     textAlign: 'center',
   },
   summaryCard: {
@@ -461,14 +461,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#E8FFF3',
     borderWidth: 1,
-    borderColor: 'rgba(60, 60, 67, 0.08)',
+    borderColor: '#BFEFCC',
   },
   summaryTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#23A26D',
   },
   summaryText: {
     marginTop: 8,
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    backgroundColor: '#F5F5F7',
+    backgroundColor: '#F6FCFF',
     gap: 12,
   },
   sheetTitle: {
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
   },
   sheetText: {
     fontSize: 14,
-    color: '#6E6E73',
+    color: '#4A647C',
     textAlign: 'center',
   },
   sheetActionButton: {
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(60, 60, 67, 0.08)',
+    borderColor: '#D6EEF9',
   },
   sheetActionTitle: {
     fontSize: 17,
@@ -523,14 +523,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     lineHeight: 19,
-    color: '#6E6E73',
+    color: '#4A647C',
     textAlign: 'center',
   },
   sheetCloseButton: {
     marginTop: 4,
     paddingVertical: 14,
     borderRadius: 18,
-    backgroundColor: '#EAEAED',
+    backgroundColor: '#DFF3FF',
   },
   sheetCloseText: {
     fontSize: 16,

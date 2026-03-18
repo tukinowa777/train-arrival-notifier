@@ -10,7 +10,7 @@ function AppHeaderTitle() {
 
   return (
     <View style={styles.headerTitleContainer}>
-      <Text style={styles.headerTitle}>到着駅教える君β</Text>
+      <Text style={styles.headerTitle}>降りる駅教える君β</Text>
       {storageState.dropoffTarget && (
         <View style={styles.homeStationChip}>
           <Ionicons name="navigate" size={14} color="#FFFFFF" />
