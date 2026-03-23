@@ -68,6 +68,7 @@ export function useLocation(options: UseLocationOptions = {}): {
     requestBackgroundPermission: () => Promise<boolean>;
     startBackgroundTracking: () => Promise<boolean>;
     stopBackgroundTracking: () => Promise<boolean>;
+    clearLocationState: () => void;
     clearError: () => void;
   };
 } {
@@ -234,13 +235,6 @@ export function useLocation(options: UseLocationOptions = {}): {
   }, [setError]);
 
   /**
-   * エラーをクリア
-   */
-  const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: null }));
-  }, []);
-
-  /**
    * 位置情報の継続的な監視を開始
    */
   const startWatchingPosition = useCallback(async () => {
@@ -278,6 +272,29 @@ export function useLocation(options: UseLocationOptions = {}): {
       updateTimer.current = null;
     }
   }, []);
+
+  /**
+   * エラーをクリア
+   */
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: null }));
+  }, []);
+
+  /**
+   * メモリ上の位置情報状態をリセット
+   */
+  const clearLocationState = useCallback(() => {
+    stopWatchingPosition();
+    setState(prev => ({
+      ...prev,
+      currentLocation: null,
+      nearbyStations: [],
+      closestStation: null,
+      isLoading: false,
+      error: null,
+      lastUpdated: null,
+    }));
+  }, [stopWatchingPosition]);
 
   /**
    * アプリの状態変化に応じて処理を調整
@@ -369,6 +386,7 @@ export function useLocation(options: UseLocationOptions = {}): {
       requestBackgroundPermission: handleRequestBackgroundPermission,
       startBackgroundTracking: handleStartBackgroundTracking,
       stopBackgroundTracking: handleStopBackgroundTracking,
+      clearLocationState,
       clearError,
     },
   };

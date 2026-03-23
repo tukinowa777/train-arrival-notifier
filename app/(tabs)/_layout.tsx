@@ -3,22 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDropoffNotifier } from '../../src/hooks/useDropoffNotifier';
 import { useAndroidBridgeSync } from '../../src/hooks/useAndroidBridgeSync';
-import { useStorage } from '../../src/hooks/useStorage';
 
 function AppHeaderTitle() {
-  const { state: storageState } = useStorage();
-
   return (
     <View style={styles.headerTitleContainer}>
       <Text style={styles.headerTitle}>降りる駅教える君β</Text>
-      {storageState.dropoffTarget && (
-        <View style={styles.homeStationChip}>
-          <Ionicons name="navigate" size={14} color="#FFFFFF" />
-          <Text style={styles.homeStationChipText}>
-            {storageState.dropoffTarget.station.name}駅
-          </Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -100,22 +89,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  homeStationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-  },
-  homeStationChipText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: '#FFFFFF',
   },
 });

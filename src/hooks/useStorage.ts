@@ -34,6 +34,7 @@ import {
   clearSearchHistory,
   loadLastLocation,
   saveLastLocation,
+  clearLastLocation,
   clearAllData,
   getStorageInfo,
 } from '../services/storageService';
@@ -117,6 +118,8 @@ export function useStorage(options: UseStorageOptions = {}): {
 
     // 位置情報
     saveLocation: (location: LocationHistory) => Promise<boolean>;
+    clearLocation: () => Promise<boolean>;
+    resetTripCache: () => Promise<boolean>;
 
     // データ管理
     loadAllData: () => Promise<boolean>;
@@ -665,6 +668,56 @@ export function useStorage(options: UseStorageOptions = {}): {
   }, []);
 
   /**
+   * 位置情報をクリア
+   */
+  const handleClearLocation = useCallback(async (): Promise<boolean> => {
+    try {
+      const success = await clearLastLocation();
+
+      if (success) {
+        setState(prev => ({ ...prev, lastLocation: null }));
+        emitStorageSync();
+      }
+
+      return success;
+    } catch (error) {
+      console.error('位置情報のクリアに失敗:', error);
+      setError('位置情報のクリアに失敗しました');
+      return false;
+    }
+  }, [emitStorageSync, setError]);
+
+  /**
+   * 現在地と降車駅のキャッシュをまとめてリセット
+   */
+  const handleResetTripCache = useCallback(async (): Promise<boolean> => {
+    try {
+      const results = await Promise.all([
+        clearDropoffTarget(),
+        clearHomeStation(),
+        clearLastLocation(),
+      ]);
+      const success = results.every(result => result);
+
+      if (success) {
+        setState(prev => ({
+          ...prev,
+          dropoffTarget: null,
+          homeStation: null,
+          lastLocation: null,
+        }));
+        emitStorageSync();
+      }
+
+      return success;
+    } catch (error) {
+      console.error('移動キャッシュのリセットに失敗:', error);
+      setError('移動キャッシュのリセットに失敗しました');
+      return false;
+    }
+  }, [emitStorageSync, setError]);
+
+  /**
    * 全データをクリア
    */
   const handleClearAllData = useCallback(async (): Promise<boolean> => {
@@ -789,6 +842,8 @@ export function useStorage(options: UseStorageOptions = {}): {
 
       // 位置情報
       saveLocation: handleSaveLocation,
+      clearLocation: handleClearLocation,
+      resetTripCache: handleResetTripCache,
 
       // データ管理
       loadAllData,

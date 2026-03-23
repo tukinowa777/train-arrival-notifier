@@ -15,7 +15,7 @@ import { Station } from '../src/types';
 import { searchStations } from '../src/services/stationService';
 import { useStorage } from '../src/hooks/useStorage';
 import { createDropoffTarget } from '../src/hooks/useDropoffNotifier';
-import { lines, stations } from '../src/constants/stations';
+import { lines } from '../src/constants/stations';
 import {
   sendDropoffTargetToAndroid,
   sendHomeStationToAndroid,
@@ -27,29 +27,12 @@ export default function StationPickerScreen() {
   const selectionMode = params.mode === 'home' ? 'home' : 'dropoff';
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
   const [showQuickActions, setShowQuickActions] = useState(false);
-  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [showLineStations, setShowLineStations] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const { state: storageState, actions: storageActions } = useStorage();
 
   const pageTitle = selectionMode === 'home' ? '出発駅を選ぶ' : '降車駅を選ぶ';
   const primaryActionLabel = selectionMode === 'home' ? 'この駅を出発駅にする' : 'この駅を降車駅にする';
-
-  const selectedLine = useMemo(
-    () => lines.find((line) => line.id === selectedLineId) || null,
-    [selectedLineId]
-  );
-
-  const lineStations = useMemo(() => {
-    if (!selectedLineId) {
-      return [];
-    }
-
-    return stations.filter((station) =>
-      station.lines.some((line) => line.id === selectedLineId)
-    );
-  }, [selectedLineId]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -83,9 +66,8 @@ export default function StationPickerScreen() {
       }
 
       sendHomeStationToAndroid(homeStationSetting);
-      Alert.alert('出発駅', `${selectedStation.name}駅を設定しました。`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      setShowQuickActions(false);
+      router.back();
       return;
     }
 
@@ -103,11 +85,9 @@ export default function StationPickerScreen() {
   }, [selectedStation, selectionMode, storageActions]);
 
   const handleSelectLine = useCallback((lineId: string) => {
-    const isSameLine = selectedLineId === lineId;
-    setSelectedLineId(lineId);
-    setShowLineStations(isSameLine ? !showLineStations : true);
     setShowQuickActions(false);
-  }, [selectedLineId, showLineStations]);
+    router.push(`/line-stations?mode=${selectionMode}&lineId=${lineId}`);
+  }, [selectionMode]);
 
   const handleSelectSearchResult = useCallback((station: Station) => {
     setSearchQuery(station.name);
@@ -176,25 +156,18 @@ export default function StationPickerScreen() {
           <Text style={styles.sectionTitle}>路線から選ぶ</Text>
           <View style={styles.lineGrid}>
             {lines.map((line) => {
-              const isSelected = selectedLineId === line.id;
-
               return (
                 <TouchableOpacity
                   key={line.id}
                   style={[
                     styles.lineItem,
-                    isSelected && styles.lineItemSelected,
-                    isSelected && { borderColor: line.color, backgroundColor: `${line.color}22` },
+                    { borderColor: line.color, backgroundColor: `${line.color}18` },
                   ]}
                   onPress={() => handleSelectLine(line.id)}
                 >
                   <View style={styles.lineTileHeader}>
                     <View style={[styles.lineDot, { backgroundColor: line.color }]} />
-                    <Ionicons
-                      name={isSelected && showLineStations ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color="#8E8E93"
-                    />
+                    <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
                   </View>
                   <Text style={styles.lineItemName}>{line.name}</Text>
                   <Text style={styles.lineItemOperator}>{line.operator}</Text>
@@ -202,34 +175,6 @@ export default function StationPickerScreen() {
               );
             })}
           </View>
-
-          {selectedLine && showLineStations && (
-            <View style={styles.dropdownContainer}>
-              <View style={styles.selectedLineHeader}>
-                <View style={styles.lineItemLeft}>
-                  <View style={[styles.lineDot, { backgroundColor: selectedLine.color }]} />
-                  <Text style={styles.selectedLineTitle}>{selectedLine.name}</Text>
-                </View>
-                <Text style={styles.stationCount}>{lineStations.length}駅</Text>
-              </View>
-
-              <View style={styles.stationList}>
-                {lineStations.map((station) => (
-                  <TouchableOpacity
-                    key={station.id}
-                    style={styles.stationItem}
-                    onPress={() => handleStationPress(station)}
-                  >
-                    <View style={styles.stationTextGroup}>
-                      <Text style={styles.stationName}>{station.name}駅</Text>
-                      <Text style={styles.stationKana}>{station.nameKana}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
         </View>
       </ScrollView>
 
@@ -376,15 +321,6 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
   },
-  lineItemSelected: {
-    borderWidth: 1.5,
-  },
-  lineItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
   lineTileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -406,33 +342,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     color: '#64748B',
-  },
-  dropdownContainer: {
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#DCE6F3',
-  },
-  selectedLineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  selectedLineTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  stationCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  stationList: {
-    gap: 8,
   },
   stationItem: {
     flexDirection: 'row',

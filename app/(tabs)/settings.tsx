@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,14 +25,41 @@ import { getEstimatedArrivalMinutes } from '../../src/hooks/useDropoffNotifier';
 
 export default function SettingsScreen() {
   const [isLoadingNearbyStations, setIsLoadingNearbyStations] = useState(false);
-  const [isCurrentLocationSheetVisible, setIsCurrentLocationSheetVisible] = useState(false);
+  const [isFloatingSummaryVisible, setIsFloatingSummaryVisible] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isHomeActionModalVisible, setIsHomeActionModalVisible] = useState(false);
+  const [isNearbyStationModalVisible, setIsNearbyStationModalVisible] = useState(false);
+  const [nearbySelectableStations, setNearbySelectableStations] = useState<Array<Station & { distance: number }>>([]);
   const [sleepSummary, setSleepSummary] = useState<string | null>(null);
+  const [sleepCountdownSeconds, setSleepCountdownSeconds] = useState<number | null>(null);
   const { state: storageState, actions: storageActions } = useStorage();
   const { state: androidBridgeState } = useAndroidBridgeState();
   const { state: locationState, actions: locationActions } = useLocation({
     watchPosition: false,
     autoRequestPermissions: false,
   });
+  const hasHomeStation = isLoadingNearbyStations || Boolean(storageState.homeStation);
+  const hasDropoffStation = Boolean(storageState.dropoffTarget);
+
+  useEffect(() => {
+    if (sleepCountdownSeconds === null || sleepCountdownSeconds <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setSleepCountdownSeconds((prev) => {
+        if (prev === null || prev <= 1) {
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [sleepCountdownSeconds]);
 
   const nearbyStationCandidates = useMemo(() => {
     if (locationState.currentLocation) {
@@ -68,36 +96,21 @@ export default function SettingsScreen() {
 
     const success = await storageActions.setHomeStation(homeStationSetting);
     if (!success) {
-      Alert.alert('エラー', '現在地の設定に失敗しました。');
+      Alert.alert('エラー', '出発駅の設定に失敗しました。');
       return;
     }
 
     sendHomeStationToAndroid(homeStationSetting);
-    Alert.alert('現在地', `${station.name}駅を出発駅として設定しました。`);
+    Alert.alert('出発駅', `${station.name}駅を出発駅として設定しました。`);
   }, [storageActions]);
 
   const showNearbyStationSelector = useCallback((stations: Array<Station & { distance: number }>) => {
     if (stations.length === 0) {
-      Alert.alert('現在地', '近くの駅候補が見つかりませんでした。');
+      Alert.alert('出発駅', '近くの駅候補が見つかりませんでした。');
       return;
     }
-
-    Alert.alert(
-      '現在地',
-      '近い駅を選んでください。',
-      [
-        ...stations.map((station) => ({
-          text: `${station.name}駅`,
-          onPress: () => {
-            void handleSelectHomeStation(station);
-          },
-        })),
-        {
-          text: 'キャンセル',
-          style: 'cancel' as const,
-        },
-      ]
-    );
+    setNearbySelectableStations(stations);
+    setIsNearbyStationModalVisible(true);
   }, [handleSelectHomeStation]);
 
   const handleSetAutoDetectedHomeStation = useCallback(async (
@@ -106,7 +119,7 @@ export default function SettingsScreen() {
     const closestStation = stations[0];
 
     if (!closestStation) {
-      Alert.alert('現在地', '近くの駅候補が見つかりませんでした。');
+      Alert.alert('出発駅', '近くの駅候補が見つかりませんでした。');
       return;
     }
 
@@ -114,12 +127,10 @@ export default function SettingsScreen() {
   }, [handleSelectHomeStation]);
 
   const handleManualHomeStationPress = useCallback(() => {
-    setIsCurrentLocationSheetVisible(false);
     router.push('/dropoff-station?mode=home');
   }, []);
 
   const handleAutoDetectHomeStationPress = useCallback(async () => {
-    setIsCurrentLocationSheetVisible(false);
     if (nearbyStationCandidates.length > 0) {
       await handleSetAutoDetectedHomeStation(nearbyStationCandidates);
       return;
@@ -132,11 +143,11 @@ export default function SettingsScreen() {
         const granted = await locationActions.requestForegroundPermission();
         if (!granted) {
           if (requestCurrentLocationFromAndroid()) {
-            Alert.alert('現在地', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
+            Alert.alert('出発駅', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
             return;
           }
 
-          Alert.alert('現在地', '位置情報の権限が必要です。');
+          Alert.alert('出発駅', '位置情報の権限が必要です。');
           return;
         }
       }
@@ -164,11 +175,11 @@ export default function SettingsScreen() {
       }
 
       if (requestCurrentLocationFromAndroid()) {
-        Alert.alert('現在地', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
+        Alert.alert('出発駅', 'Android アプリに現在地取得を依頼しました。少し待ってからもう一度押してください。');
         return;
       }
 
-      Alert.alert('現在地', '近くの駅候補を取得できませんでした。');
+      Alert.alert('出発駅', '近くの駅候補を取得できませんでした。');
     } finally {
       setIsLoadingNearbyStations(false);
     }
@@ -176,12 +187,13 @@ export default function SettingsScreen() {
     locationActions,
     locationState.permissionStatus.foregroundGranted,
     handleSetAutoDetectedHomeStation,
+    showNearbyStationSelector,
     nearbyStationCandidates,
   ]);
 
   const handleCurrentLocationPress = useCallback(() => {
-    setIsCurrentLocationSheetVisible(true);
-  }, []);
+    setIsHomeActionModalVisible(true);
+  }, [handleAutoDetectHomeStationPress, handleManualHomeStationPress]);
 
   const handleDropoffStationPress = useCallback(() => {
     router.push('/dropoff-station?mode=dropoff');
@@ -189,7 +201,7 @@ export default function SettingsScreen() {
 
   const handleSleepPress = useCallback(async () => {
     if (!storageState.dropoffTarget) {
-      Alert.alert('寝る', '先に降車駅を設定してください。');
+      Alert.alert('START', '先に降車駅を設定してください。');
       return;
     }
 
@@ -205,7 +217,7 @@ export default function SettingsScreen() {
     const originLongitude = currentLongitude ?? fallbackLongitude;
 
     if (originLatitude === null || originLongitude === null) {
-      Alert.alert('寝る', '先に現在地を取得するか、出発駅を設定してください。');
+      Alert.alert('START', '先に現在地を取得するか、出発駅を設定してください。');
       return;
     }
 
@@ -220,6 +232,7 @@ export default function SettingsScreen() {
       locationState.currentLocation?.coords.speed
     );
     const roundedSleepMinutes = Math.max(0, Math.floor(estimatedArrivalMinutes - 2));
+    const nextSleepCountdownSeconds = Math.max(0, Math.floor((estimatedArrivalMinutes - 2) * 60));
 
     const nextDropoffTarget = {
       ...storageState.dropoffTarget,
@@ -232,7 +245,7 @@ export default function SettingsScreen() {
 
     const success = await storageActions.setDropoffTarget(nextDropoffTarget);
     if (!success) {
-      Alert.alert('寝る', '通知待機の開始に失敗しました。');
+      Alert.alert('START', '通知待機の開始に失敗しました。');
       return;
     }
 
@@ -242,8 +255,10 @@ export default function SettingsScreen() {
     sendDropoffTargetToAndroid(nextDropoffTarget);
 
     setSleepSummary(
-      `${nextDropoffTarget.station.name}駅まで約${Math.ceil(estimatedArrivalMinutes)}分です。あと約${roundedSleepMinutes}分寝られます。到着2分前に通知とバイブでお知らせします。`
+      `${nextDropoffTarget.station.name}駅まで約${Math.ceil(estimatedArrivalMinutes)}分です。通知までは約${roundedSleepMinutes}分です。到着2分前に通知とバイブでお知らせします。`
     );
+    setSleepCountdownSeconds(nextSleepCountdownSeconds);
+    setIsFloatingSummaryVisible(true);
   }, [
     androidBridgeState.currentLatitude,
     androidBridgeState.currentLongitude,
@@ -253,102 +268,211 @@ export default function SettingsScreen() {
     storageState.homeStation,
   ]);
 
+  const handleResetTripCachePress = useCallback(async () => {
+    if (isResetting) {
+      return;
+    }
+
+    setIsResetting(true);
+
+    try {
+      const success = await storageActions.resetTripCache();
+
+      if (!success) {
+        Alert.alert('リセット', 'キャッシュのリセットに失敗しました。');
+        return;
+      }
+
+      locationActions.clearLocationState();
+      sendHomeStationToAndroid(null);
+      sendDropoffTargetToAndroid(null);
+      setSleepSummary(null);
+      setSleepCountdownSeconds(null);
+      setIsFloatingSummaryVisible(false);
+    } finally {
+      setIsResetting(false);
+    }
+  }, [isResetting, locationActions, storageActions]);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.heroBlock}>
-        <Text style={styles.eyebrow}>Train Arrival Notifier</Text>
-        <Text style={styles.title}>降りる駅教える君β</Text>
-        <Text style={styles.subtitle}>
-          降りる駅の近くまで来たら、知らせるよ
-        </Text>
-      </View>
+    <View style={styles.screen}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.tileGrid}>
+          <TouchableOpacity style={styles.tileButton} onPress={handleCurrentLocationPress}>
+            <View style={styles.buttonContent}>
+              <Text style={hasHomeStation ? styles.tileButtonLabelCompact : styles.tileButtonValue}>
+                出発駅
+              </Text>
+              <Text
+                style={styles.stationTileValue}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.68}
+              >
+                {isLoadingNearbyStations
+                  ? '取得中'
+                  : storageState.homeStation
+                    ? `${storageState.homeStation.station.name}駅`
+                    : '未設定'}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-      <View style={styles.topRow}>
-        <TouchableOpacity style={styles.squareButton} onPress={() => void handleCurrentLocationPress()}>
-          <View style={styles.buttonContent}>
-            <Text style={styles.buttonLabel}>Start</Text>
-            <Text style={styles.squareButtonText}>現在地</Text>
-            <Text style={styles.buttonSubtext}>
-              {isLoadingNearbyStations
-                ? '取得中'
-                : storageState.homeStation
-                  ? `${storageState.homeStation.station.name}駅`
+          <TouchableOpacity style={styles.tileButton} onPress={handleDropoffStationPress}>
+            <View style={styles.buttonContent}>
+              <Text style={hasDropoffStation ? styles.tileButtonLabelCompact : styles.tileButtonValue}>
+                降車駅
+              </Text>
+              <Text
+                style={styles.stationTileValue}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.68}
+              >
+                {storageState.dropoffTarget
+                  ? `${storageState.dropoffTarget.station.name}駅`
                   : '未設定'}
-            </Text>
-          </View>
-        </TouchableOpacity>
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.squareButton} onPress={handleDropoffStationPress}>
-          <View style={styles.buttonContent}>
-            <Text style={styles.buttonLabel}>Target</Text>
-            <Text style={styles.squareButtonText}>降車駅</Text>
-            <Text style={styles.buttonSubtext}>
-              {storageState.dropoffTarget
-                ? `${storageState.dropoffTarget.station.name}駅`
-                : '未設定'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.tileButton} onPress={() => void handleSleepPress()}>
+            <View style={styles.buttonContent}>
+              <Text style={styles.tileButtonValue}>START</Text>
+              <Text style={styles.buttonSubtext}>
+                {storageState.dropoffTarget
+                  ? `${storageState.dropoffTarget.station.name}駅で通知`
+                  : '降車駅を設定してください'}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-      <TouchableOpacity style={styles.sleepButton} onPress={() => void handleSleepPress()}>
-        <View style={styles.buttonContent}>
-          <Text style={styles.buttonLabel}>Ready</Text>
-          <Text style={styles.sleepButtonText}>START</Text>
-          <Text style={styles.buttonSubtext}>
-            {storageState.dropoffTarget
-              ? `${storageState.dropoffTarget.station.name}駅で通知`
-              : '降車駅を設定してください'}
-          </Text>
+          <TouchableOpacity style={styles.tileButton} onPress={() => void handleResetTripCachePress()}>
+            <View style={styles.buttonContent}>
+              <Text style={styles.tileButtonValue}>{isResetting ? 'RESET...' : 'RESET'}</Text>
+              <Text style={styles.buttonSubtext}>
+                現在地と降車駅を初期化
+              </Text>
+            </View>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
 
-      {sleepSummary && (
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>睡眠時間の目安</Text>
-          <Text style={styles.summaryText}>{sleepSummary}</Text>
+        {sleepSummary && (
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>到着までの目安</Text>
+            {sleepCountdownSeconds !== null && (
+              <Text style={styles.summaryCountdown}>
+                {Math.floor(sleepCountdownSeconds / 60)}:{String(sleepCountdownSeconds % 60).padStart(2, '0')}
+              </Text>
+            )}
+            <Text style={styles.summaryText}>{sleepSummary}</Text>
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal
+        visible={isHomeActionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsHomeActionModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>出発駅の設定</Text>
+            <Text style={styles.modalDescription}>設定方法を選んでください。</Text>
+            <TouchableOpacity
+              style={styles.modalPrimaryButton}
+              onPress={() => {
+                setIsHomeActionModalVisible(false);
+                void handleAutoDetectHomeStationPress();
+              }}
+            >
+              <Text style={styles.modalPrimaryButtonText}>GPSで自動取得</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryButton}
+              onPress={() => {
+                setIsHomeActionModalVisible(false);
+                handleManualHomeStationPress();
+              }}
+            >
+              <Text style={styles.modalSecondaryButtonText}>自分で出発駅を選ぶ</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setIsHomeActionModalVisible(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isNearbyStationModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNearbyStationModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>出発駅</Text>
+            <Text style={styles.modalDescription}>近い駅を選んでください。</Text>
+            {nearbySelectableStations.map((station) => (
+              <TouchableOpacity
+                key={station.id}
+                style={styles.modalSecondaryButton}
+                onPress={() => {
+                  setIsNearbyStationModalVisible(false);
+                  void handleSelectHomeStation(station);
+                }}
+              >
+                <Text style={styles.modalSecondaryButtonText}>{station.name}駅</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setIsNearbyStationModalVisible(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {sleepSummary && isFloatingSummaryVisible && (
+        <View style={styles.floatingOverlay}>
+          <View style={styles.floatingCard}>
+            <Text style={styles.summaryTitle}>到着までの目安</Text>
+            {sleepCountdownSeconds !== null && (
+              <Text style={styles.summaryCountdown}>
+                {Math.floor(sleepCountdownSeconds / 60)}:{String(sleepCountdownSeconds % 60).padStart(2, '0')}
+              </Text>
+            )}
+            <Text style={styles.summaryText}>{sleepSummary}</Text>
+            <TouchableOpacity
+              style={styles.floatingCloseButton}
+              onPress={() => {
+                setIsFloatingSummaryVisible(false);
+              }}
+            >
+              <Text style={styles.floatingCloseText}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
-
-      {isCurrentLocationSheetVisible && (
-        <View style={styles.sheetOverlay}>
-          <View style={styles.sheetCard}>
-            <Text style={styles.sheetTitle}>出発駅の設定</Text>
-            <Text style={styles.sheetText}>設定方法を選んでください。</Text>
-
-            <TouchableOpacity
-              style={styles.sheetActionButton}
-              onPress={() => void handleAutoDetectHomeStationPress()}
-            >
-              <Text style={styles.sheetActionTitle}>GPSで自動取得</Text>
-              <Text style={styles.sheetActionText}>近くの駅候補から出発駅を設定します。</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sheetActionButton}
-              onPress={handleManualHomeStationPress}
-            >
-              <Text style={styles.sheetActionTitle}>自分で出発駅を選ぶ</Text>
-              <Text style={styles.sheetActionText}>駅名検索で手動設定します。</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sheetCloseButton}
-              onPress={() => setIsCurrentLocationSheetVisible(false)}
-            >
-              <Text style={styles.sheetCloseText}>閉じる</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#DCEBF4',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F3FAFF',
+    backgroundColor: '#DCEBF4',
   },
   content: {
     flexGrow: 1,
@@ -356,186 +480,213 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 48,
   },
-  heroBlock: {
-    marginTop: 8,
-    marginBottom: 44,
-    alignItems: 'center',
-  },
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: '#4D9BCF',
-  },
-  title: {
-    marginTop: 10,
-    fontSize: 36,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: '#1D1D1F',
-    letterSpacing: -0.9,
-  },
-  subtitle: {
-    marginTop: 12,
-    maxWidth: 320,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    color: '#4A647C',
-  },
-  topRow: {
+  tileGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 14,
   },
-  squareButton: {
-    flex: 1,
-    minHeight: 192,
+  tileButton: {
+    width: '48%',
+    minHeight: 188,
     paddingHorizontal: 18,
     paddingVertical: 18,
     borderWidth: 1,
-    borderColor: '#D3EEFA',
-    borderRadius: 30,
+    borderColor: '#FFFFFF',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.08,
-    shadowRadius: 30,
-    elevation: 4,
+    backgroundColor: '#F6FBFE',
   },
   buttonContent: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
   },
-  buttonLabel: {
+  tileButtonLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#5D7890',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  tileButtonLabelCompact: {
     fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: '#0DA6D8',
+    fontWeight: '700',
+    color: '#6D879D',
+    letterSpacing: 0.3,
     textAlign: 'center',
   },
-  squareButtonText: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1D1D1F',
-    letterSpacing: -0.7,
+  tileButtonValue: {
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '800',
+    color: '#15212E',
+    letterSpacing: -0.8,
     textAlign: 'center',
   },
-  sleepButton: {
-    minHeight: 188,
-    marginTop: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    borderWidth: 1,
-    borderColor: '#FFE08A',
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF8D8',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.08,
-    shadowRadius: 34,
-    elevation: 5,
-  },
-  sleepButtonText: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#1D1D1F',
-    letterSpacing: -1,
+  stationTileValue: {
+    width: '100%',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
+    color: '#15212E',
+    letterSpacing: -0.5,
     textAlign: 'center',
   },
   buttonSubtext: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#4A647C',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(18, 29, 43, 0.24)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D3EEFA',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1D1D1F',
+    textAlign: 'center',
+    letterSpacing: -0.6,
+  },
+  modalDescription: {
+    marginTop: 10,
+    marginBottom: 18,
     fontSize: 15,
     lineHeight: 22,
     color: '#4A647C',
     textAlign: 'center',
   },
+  modalPrimaryButton: {
+    minHeight: 58,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1D1D1F',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  modalPrimaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  modalSecondaryButton: {
+    minHeight: 58,
+    marginTop: 12,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3FAFF',
+    borderWidth: 1,
+    borderColor: '#D3EEFA',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  modalSecondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1D1D1F',
+    textAlign: 'center',
+  },
+  modalCancelButton: {
+    marginTop: 14,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#EEF4F8',
+  },
+  modalCancelButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#4A647C',
+  },
   summaryCard: {
     marginTop: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 24,
-    backgroundColor: '#E8FFF3',
+    paddingHorizontal: 22,
+    paddingVertical: 22,
     borderWidth: 1,
     borderColor: '#BFEFCC',
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+  },
+  floatingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(18, 29, 43, 0.18)',
+  },
+  floatingCard: {
+    width: '100%',
+    maxWidth: 360,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BFEFCC',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.18,
+    shadowRadius: 30,
+    elevation: 14,
   },
   summaryTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: '#23A26D',
+    textAlign: 'center',
+  },
+  summaryCountdown: {
+    marginTop: 10,
+    fontSize: 48,
+    fontWeight: '700',
+    lineHeight: 54,
+    color: '#129B67',
+    textAlign: 'center',
+    letterSpacing: -1.6,
   },
   summaryText: {
     marginTop: 8,
     fontSize: 17,
     lineHeight: 26,
     color: '#1D1D1F',
+    textAlign: 'center',
   },
-  sheetOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.18)',
-  },
-  sheetCard: {
+  floatingCloseButton: {
+    marginTop: 18,
+    alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: '#F6FCFF',
-    gap: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#E9FFF2',
   },
-  sheetTitle: {
-    fontSize: 22,
+  floatingCloseText: {
+    fontSize: 15,
     fontWeight: '700',
-    color: '#1D1D1F',
-    textAlign: 'center',
-  },
-  sheetText: {
-    fontSize: 14,
-    color: '#4A647C',
-    textAlign: 'center',
-  },
-  sheetActionButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D6EEF9',
-  },
-  sheetActionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1D1D1F',
-    textAlign: 'center',
-  },
-  sheetActionText: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#4A647C',
-    textAlign: 'center',
-  },
-  sheetCloseButton: {
-    marginTop: 4,
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: '#DFF3FF',
-  },
-  sheetCloseText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1D1D1F',
-    textAlign: 'center',
+    color: '#129B67',
   },
 });

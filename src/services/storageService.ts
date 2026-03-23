@@ -476,6 +476,13 @@ export async function loadLastLocation(): Promise<LocationHistory | null> {
   }
 }
 
+/**
+ * 最後の位置情報を削除
+ */
+export async function clearLastLocation(): Promise<boolean> {
+  return await removeData(STORAGE_KEYS.LAST_LOCATION);
+}
+
 // === データのクリア ===
 
 /**

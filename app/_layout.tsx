@@ -20,6 +20,18 @@ export default function RootLayout() {
           title: '電車到着通知'
         }}
       />
+      <Stack.Screen
+        name="dropoff-station"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="line-stations"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
