@@ -1,0 +1,9 @@
+android-app/
+dist/
+docs/
+git-remotes/
+logs/
+tmp/
+SESSION_PROGRESS_2026-03-17_JA.md
+OCI_COMMANDS.sh
+*.md
