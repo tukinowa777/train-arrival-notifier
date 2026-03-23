@@ -319,3 +319,33 @@ npm start
 - 2026-03-15 CODEX: 仕様整理を拡張。`APP_OVERVIEW_NONTECH_JA.md` を追加して非技術者向けの概要資料を作成し、`GOOGLE_PLAY_TEXT_TEMPLATE_JA.md` に Google Play 提出向けの短い説明・詳細説明・通知/位置情報説明文を整理。`SOFTWARE_SPECIFICATION_JA.md` の関連ドキュメント一覧にも反映した。
 - 2026-03-15 CODEX: リリース準備資料を追加拡張。`PRIVACY_POLICY_JA.md` に公開前のプライバシーポリシー草案を作成し、`AAB_RELEASE_STEPS_JA.md` に Google Play 内部テスト/公開用の署名付き AAB 作成手順を整理。`SOFTWARE_SPECIFICATION_JA.md` の関連資料一覧も更新。
 - 2026-03-15 CODEX: Android アプリ化をさらに進めるため、`ANDROID_FOREGROUND_SERVICE_IMPL.md` を追加。`LocationTrackingService.kt` を Foreground Service として実装する方針、必要な Manifest 権限と service 宣言、`dropoffTarget` を使った接近判定、Service 開始/停止を `MainActivity` へ組み込む Kotlin 例、確認項目を整理。
+- 2026-03-23 CODEX: Android 少人数テスト配布のためのビルド経路を整理。今回のアプリ本体は `app/` / `src/` / `app.json` を中心とした Expo managed 構成として扱い、AAB は Android Studio 直生成ではなく `EAS Build` を正とする方針を明記。Windows 側で `android/` ディレクトリが存在すると EAS が native project と判定して `app.json` の `expo.android.package` が無視されることを確認したため、AAB 作成時は `android/` を含まないビルド用コピーで実行する運用へ切替。`app.json` に `expo.android.package = com.anonymous.trainarrivalnotifier` を追加し、`eas.json` / `.easignore` を導入。AAB 作成は `train-arrival-notifier-build` のような別ディレクトリで `npx eas-cli build -p android --profile production` を実行する手順で成功確認。
+
+## ⚠️ 開発者向け注意
+
+### このプロジェクトの正とする構成
+- 日常開発の正本は Expo managed 側です
+- 主に編集するのは `app/`, `src/`, `app.json`, `eas.json`
+- Android 実機/エミュレータ確認は `npx expo start --android` を基本にする
+
+### `android/` ディレクトリの扱い
+- `android/` が存在すると、EAS Build は Expo managed ではなく native Android project として扱う
+- その場合、`app.json` の `expo.android.package` など Expo 側設定が無視されることがある
+- 今回のように Expo 側を修正している期間は、AAB 作成時に `android/` を含めない
+
+### AAB 作成の正しい手順
+- Google Play 内部テスト用の AAB は Android Studio から直接作る前提ではなく、`EAS Build` で作る
+- Windows 側でビルドする場合は、作業コピーから `android/`, `ios/`, `node_modules`, `.git` などを除いたビルド用ディレクトリを作る
+- そのコピー先で `npm install` 後、`npx eas-cli build -p android --profile production` を実行する
+
+### Windows 側の推奨フロー
+- `git pull origin feature/station-flow-tuning`
+- 必要ならビルド用コピーを作成
+- `npm install`
+- `npx expo start --android` でエミュレータ確認
+- `npx eas-cli build -p android --profile production` で AAB 作成
+
+### 再発防止
+- `android/` を触る必要がある native 開発と、Expo managed 側開発を同じ手順で混在させない
+- 配布用 AAB を作る直前に、どちらの構成でビルドするかを必ず確認する
+- Play Console 提出前は `app.json`, `eas.json`, `.easignore` の3点を先に確認する
